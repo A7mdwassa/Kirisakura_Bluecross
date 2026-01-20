@@ -32,6 +32,8 @@
 *.lz4
 *.lzo
 *.patch
+*.rej
+*.orig
 *.gcno
 *.ll
 modules.builtin
@@ -121,3 +123,5 @@ kernel/configs/android-*.cfg
 
 # Qualcomm out-of-tree audio drivers
 /techpack/audio
+
+out/
