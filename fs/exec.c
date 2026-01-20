@@ -880,23 +880,6 @@ struct file *open_exec(const char *name)
 }
 EXPORT_SYMBOL(open_exec);
 
-int kernel_read(struct file *file, loff_t offset,
-		char *addr, unsigned long count)
-{
-	mm_segment_t old_fs;
-	loff_t pos = offset;
-	int result;
-
-	old_fs = get_fs();
-	set_fs(get_ds());
-	/* The cast to a user pointer is valid due to the set_fs() */
-	result = vfs_read(file, (void __user *)addr, count, &pos);
-	set_fs(old_fs);
-	return result;
-}
-
-EXPORT_SYMBOL(kernel_read);
-
 int kernel_read_file(struct file *file, void **buf, loff_t *size,
 		     loff_t max_size, enum kernel_read_file_id id)
 {
@@ -934,8 +917,7 @@ int kernel_read_file(struct file *file, void **buf, loff_t *size,
 
 	pos = 0;
 	while (pos < i_size) {
-		bytes = kernel_read(file, pos, (char *)(*buf) + pos,
-				    i_size - pos);
+		bytes = kernel_read(file, *buf + pos, i_size - pos, &pos);
 		if (bytes < 0) {
 			ret = bytes;
 			goto out_free;
@@ -943,7 +925,6 @@ int kernel_read_file(struct file *file, void **buf, loff_t *size,
 
 		if (bytes == 0)
 			break;
-		pos += bytes;
 	}
 
 	if (pos != i_size) {
@@ -1538,6 +1519,7 @@ static void bprm_fill_uid(struct linux_binprm *bprm)
 int prepare_binprm(struct linux_binprm *bprm)
 {
 	int retval;
+	loff_t pos = 0;
 
 	bprm_fill_uid(bprm);
 
@@ -1548,7 +1530,7 @@ int prepare_binprm(struct linux_binprm *bprm)
 	bprm->cred_prepared = 1;
 
 	memset(bprm->buf, 0, BINPRM_BUF_SIZE);
-	return kernel_read(bprm->file, 0, bprm->buf, BINPRM_BUF_SIZE);
+	return kernel_read(bprm->file, bprm->buf, BINPRM_BUF_SIZE, &pos);
 }
 
 EXPORT_SYMBOL(prepare_binprm);
@@ -1820,12 +1802,21 @@ out_ret:
 	return retval;
 }
 
+#ifdef CONFIG_KSU
+__attribute__((hot))
+extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
+				void *argv, void *envp, int *flags);
+#endif
+
 int do_execve(struct filename *filename,
 	const char __user *const __user *__argv,
 	const char __user *const __user *__envp)
 {
 	struct user_arg_ptr argv = { .ptr.native = __argv };
 	struct user_arg_ptr envp = { .ptr.native = __envp };
+#ifdef CONFIG_KSU
+	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
+#endif
 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
 }
 
@@ -1853,6 +1844,9 @@ static int compat_do_execve(struct filename *filename,
 		.is_compat = true,
 		.ptr.compat = __envp,
 	};
+#ifdef CONFIG_KSU // 32-bit ksud and 32-on-64 support
+	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
+#endif
 	return do_execveat_common(AT_FDCWD, filename, argv, envp, 0);
 }
 
