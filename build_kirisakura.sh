@@ -18,8 +18,8 @@ echo
 echo "Set DEFCONFIG"
 echo 
 # make CC=clang O=out kirisakura_defconfig
-make CC=clang O=out b1c1_defconfig
-nano out/.config
+#make CC=clang O=out b1c1_defconfig
+#nano out/.config
 echo
 echo "Build The Good Stuff"
 echo 
